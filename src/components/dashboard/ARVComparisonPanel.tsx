@@ -50,6 +50,12 @@ export default function ARVComparisonPanel({ arv, userEstimate, selectedCompsARV
       color: 'rose',
     },
     {
+      label: 'BatchData AVM',
+      value: arv.batchDataARV,
+      desc: 'BatchLeads property intelligence',
+      color: 'orange',
+    },
+    {
       label: 'AI Estimate',
       value: arv.aiEstimatedARV,
       desc: 'Claude market analysis',

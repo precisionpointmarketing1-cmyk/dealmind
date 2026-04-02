@@ -134,8 +134,9 @@ export async function analyzeProperty(input: DealInput): Promise<AnalysisResult>
   const rcTaxes      = input.annualTaxes    > 0 ? input.annualTaxes    : Math.round(marketRent * 12 * 0.012)
   const rcInsurance  = input.annualInsurance > 0 ? input.annualInsurance : Math.round(marketRent * 12 * 0.006)
 
-  // 3. ARV — RentCast + comps + Zillow + HouseCanary + ATTOM blended
-  const arv = calcARV(input, saleComps, zillowAvgPrice, hcAVM, attomAVM)
+  // 3. ARV — RentCast + comps + Zillow + HouseCanary + ATTOM + BatchData blended
+  const batchDataAVMValue = batchLeadsData?.estimatedValue ?? null
+  const arv = calcARV(input, saleComps, zillowAvgPrice, hcAVM, attomAVM, batchDataAVMValue)
 
   // Compute MAO from RentCast ARV
   const computedMAO = arv.adjustedARV * DEFAULTS.INVESTOR_DISCOUNT - (input.estimatedRepairs ?? 0)

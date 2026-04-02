@@ -336,6 +336,7 @@ export interface ARVResult {
   attomARV?: number         // ATTOM AVM
   attomLow?: number
   attomHigh?: number
+  batchDataARV?: number     // BatchData AVM (via BatchLeads key)
   adjustedARV: number       // blended consensus — used for all calculations
   confidence: 'high' | 'medium' | 'low'
   pricePerSqft: number

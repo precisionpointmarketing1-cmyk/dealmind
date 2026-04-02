@@ -2,7 +2,7 @@ import { DealInput, ARVResult, RentCastSaleComps } from '@/types/deal'
 import type { HouseCanaryAVM } from '@/lib/api-clients/housecanary'
 import type { AttomAVM } from '@/lib/api-clients/attom'
 
-export function calcARV(input: DealInput, saleComps?: RentCastSaleComps, zillowAvgPrice?: number, hcAVM?: HouseCanaryAVM | null, attomAVM?: AttomAVM | null): ARVResult {
+export function calcARV(input: DealInput, saleComps?: RentCastSaleComps, zillowAvgPrice?: number, hcAVM?: HouseCanaryAVM | null, attomAVM?: AttomAVM | null, batchDataAVM?: number | null): ARVResult {
   const { sqft, estimatedARV: userARV } = input
 
   if (!saleComps || saleComps.comparables.length === 0) {
@@ -69,6 +69,9 @@ export function calcARV(input: DealInput, saleComps?: RentCastSaleComps, zillowA
   // ── Method 6: ATTOM AVM ───────────────────────────────────────────────────
   const attomARV = attomAVM?.value && attomAVM.value > 0 ? attomAVM.value : undefined
 
+  // ── Method 7: BatchData AVM ───────────────────────────────────────────────
+  const batchDataARV = batchDataAVM && batchDataAVM > 0 ? batchDataAVM : undefined
+
   // ── ARV Consensus ─────────────────────────────────────────────────────────
   // AVM endpoints (RentCast, ATTOM, HouseCanary, Zillow) estimate the SUBJECT
   // property's current as-is value — NOT its after-repair value. For distressed
@@ -95,6 +98,8 @@ export function calcARV(input: DealInput, saleComps?: RentCastSaleComps, zillowA
     if (attomARV && attomARV > 0)             avmEstimates.push({ value: attomARV,       weight: 0.20 })
     if (zillowARV && zillowARV > 0)           avmEstimates.push({ value: zillowARV,      weight: 0.15 })
 
+    if (batchDataARV && batchDataARV > 0) avmEstimates.push({ value: batchDataARV, weight: 0.25 })
+
     if (avmEstimates.length > 0) {
       const totalWeight = avmEstimates.reduce((s, e) => s + e.weight, 0)
       adjustedARV = avmEstimates.reduce((s, e) => s + e.value * (e.weight / totalWeight), 0)
@@ -118,6 +123,7 @@ export function calcARV(input: DealInput, saleComps?: RentCastSaleComps, zillowA
     attomARV,
     attomLow:   attomAVM?.valueLow,
     attomHigh:  attomAVM?.valueHigh,
+    batchDataARV,
     adjustedARV,
     confidence,
     pricePerSqft: weightedPPSF || (adjustedARV / (sqft || 1)),

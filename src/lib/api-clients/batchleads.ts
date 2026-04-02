@@ -1,27 +1,28 @@
 /**
- * BatchLeads API client
- * Searches the user's BatchLeads account for a property by address.
- * Returns mortgage, lien, equity, and AVM data when found.
+ * BatchData API client (via BatchLeads key)
+ * BatchLeads and BatchData are sister companies — the BatchLeads key works
+ * against api.batchdata.io for arbitrary property lookups.
  *
- * NOTE: Only returns data for properties already imported into the BatchLeads account.
+ * Endpoint: POST https://api.batchdata.io/v1/property/lookup
+ * Auth: Authorization: Bearer <key>
  */
 
-const BASE = 'https://api.batchleads.io'
+const BASE = 'https://api.batchdata.io/v1'
 const KEY  = process.env.BATCHLEADS_API_KEY!
 
 async function post(path: string, body: object) {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     headers: {
-      'api-key':      KEY,
-      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${KEY}`,
+      'Content-Type':  'application/json',
     },
     body: JSON.stringify(body),
     cache: 'no-store',
   })
   const text = await res.text()
-  if (!res.ok) throw new Error(`BatchLeads ${res.status}: ${text.slice(0, 150)}`)
-  try { return JSON.parse(text) } catch { throw new Error('BatchLeads bad JSON') }
+  if (!res.ok) throw new Error(`BatchData ${res.status}: ${text.slice(0, 200)}`)
+  try { return JSON.parse(text) } catch { throw new Error('BatchData bad JSON') }
 }
 
 export interface BatchLeadsMortgage {
@@ -37,76 +38,103 @@ export interface BatchLeadsMortgage {
 
 export interface BatchLeadsPropertyData {
   found:           boolean
-  estimatedValue:  number | null   // AVM
+  estimatedValue:  number | null   // BatchData AVM
   lastSalePrice:   number | null
   lastSaleDate:    string | null
   equity:          number | null
   ltv:             number | null   // 0-100 percentage
   totalOpenLiens:  number | null
   mortgage:        BatchLeadsMortgage | null
-  address:         string | null   // matched address from BatchLeads
+  address:         string | null   // matched address
 }
 
 /**
- * Search BatchLeads account for a property by address string.
- * Returns null if not found or API key not configured.
+ * Look up property data from BatchData by address.
+ * Returns mortgage, lien, equity, and AVM data.
  */
 export async function getBatchLeadsProperty(
   address: string,
   city: string,
   state: string,
+  zip?: string,
 ): Promise<BatchLeadsPropertyData | null> {
   if (!KEY) return null
 
   try {
-    const searchStr = `${address} ${city} ${state}`
-    const data = await post('/api/v1/property', {
-      sort_data: 'id',
-      sort_type: 'desc',
-      page:      1,
-      pagesize:  5,
-      global_filter: searchStr,
+    const data = await post('/property/lookup', {
+      requests: [
+        {
+          address: {
+            street: address,
+            city,
+            state,
+            zip: zip ?? '',
+          },
+        },
+      ],
     })
 
-    const props: any[] = data?.data?.data ?? []
-    if (props.length === 0) return null
+    // BatchData wraps results in data.results[] or data.responses[]
+    const results: any[] =
+      data?.results   ??
+      data?.responses ??
+      data?.data?.results ??
+      []
 
-    // Find best match — prefer exact street number + name match
-    const addrLower = address.toLowerCase()
-    const best = props.find(p => {
-      const full = (p.property_full_address ?? '').toLowerCase()
-      return full.includes(addrLower.split(',')[0].trim())
-    }) ?? props[0]
+    const prop = results[0]?.property ?? results[0]?.data ?? results[0]
+    if (!prop) return null
 
-    if (!best) return null
+    // ── Navigate nested BatchData response structure ────────────────────────
+    // BatchData returns deeply nested data; field locations vary by plan.
+    const valuation = prop.valuation ?? prop.avm ?? prop.value ?? {}
+    const mortgage  = prop.openMortgages?.[0] ?? prop.mortgage ?? prop.liens?.mortgages?.[0] ?? null
+    const liens     = prop.liens ?? prop.openLiens ?? {}
 
-    const raw = best.mortgage
-    const mortgage: BatchLeadsMortgage | null = raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? {
-          loanAmount:                   raw.loanAmount                   ?? null,
-          loanType:                     raw.loanType                     ?? null,
-          lenderName:                   raw.lenderName                   ?? null,
-          currentEstimatedBalance:      raw.currentEstimatedBalance      ?? null,
-          currentEstimatedInterestRate: raw.currentEstimatedInterestRate ?? null,
-          estimatedPaymentAmount:       raw.estimatedPaymentAmount       ?? null,
-          loanTermMonths:               raw.loanTermMonths               ?? null,
-          recordingDate:                raw.recordingDate                ?? null,
-        }
-      : null
+    const estimatedValue =
+      valuation?.estimatedValue ??
+      valuation?.value ??
+      valuation?.amount ??
+      prop.estimatedValue ??
+      prop.avm ??
+      null
+
+    const equity = valuation?.equity ?? prop.equity ?? liens?.equity ?? null
+    const ltv    = valuation?.ltv    ?? prop.ltv    ?? liens?.ltv    ?? null
+    const totalOpenLiens =
+      liens?.totalOpenLienBalance ??
+      liens?.totalBalance ??
+      prop.totalOpenLienBalance ??
+      null
+
+    const lastSale = prop.saleHistory?.[0] ?? prop.lastSale ?? {}
+
+    let parsedMortgage: BatchLeadsMortgage | null = null
+    if (mortgage && typeof mortgage === 'object') {
+      parsedMortgage = {
+        loanAmount:                   mortgage.loanAmount          ?? mortgage.originalAmount   ?? null,
+        loanType:                     mortgage.loanType            ?? mortgage.type             ?? null,
+        lenderName:                   mortgage.lenderName          ?? mortgage.lender           ?? null,
+        currentEstimatedBalance:      mortgage.currentBalance      ?? mortgage.estimatedBalance ?? mortgage.balance ?? null,
+        currentEstimatedInterestRate: mortgage.interestRate        ?? mortgage.rate             ?? null,
+        estimatedPaymentAmount:       mortgage.estimatedPayment    ?? mortgage.monthlyPayment   ?? null,
+        loanTermMonths:               mortgage.loanTermMonths      ?? mortgage.term             ?? null,
+        recordingDate:                mortgage.recordingDate       ?? mortgage.originationDate  ?? null,
+      }
+    }
 
     return {
       found:          true,
-      estimatedValue: best.estimated_value            ?? null,
-      lastSalePrice:  best.last_sale_price            ?? null,
-      lastSaleDate:   best.last_sale_date             ?? null,
-      equity:         best.equity_current_estimated_balance ?? null,
-      ltv:            best.ltv_current_estimated_combined   ?? null,
-      totalOpenLiens: best.total_open_lien_balance    ?? null,
-      mortgage,
-      address:        best.property_full_address      ?? null,
+      estimatedValue: typeof estimatedValue === 'number' ? estimatedValue : null,
+      lastSalePrice:  lastSale.salePrice ?? lastSale.price ?? prop.lastSalePrice ?? null,
+      lastSaleDate:   lastSale.saleDate  ?? lastSale.date  ?? prop.lastSaleDate  ?? null,
+      equity:         typeof equity       === 'number' ? equity       : null,
+      ltv:            typeof ltv          === 'number' ? ltv          : null,
+      totalOpenLiens: typeof totalOpenLiens === 'number' ? totalOpenLiens : null,
+      mortgage:       parsedMortgage,
+      address:        prop.address?.oneLine ?? prop.formattedAddress ?? prop.address ?? null,
     }
   } catch (e) {
-    console.warn('[BatchLeads] lookup failed:', e)
+    console.warn('[BatchData] lookup failed:', e)
     return null
   }
 }
