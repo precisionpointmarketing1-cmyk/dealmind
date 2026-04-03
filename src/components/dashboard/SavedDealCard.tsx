@@ -127,18 +127,30 @@ export default function SavedDealCard({ deal, onOpen }: Props) {
         <p className="text-[10px] text-slate-600 mt-0.5">wholesale or sub-to assignment</p>
       </div>
 
-      {/* Strategy badge */}
-      <div className="flex items-center justify-between">
-        <span className={`text-xs px-2 py-0.5 rounded-full border border-cyan-500/30 text-cyan-400 flex items-center gap-1.5`}>
+      {/* Strategy badge + status bubbles */}
+      <div className="flex items-center justify-between gap-2">
+        <span className={`text-xs px-2 py-0.5 rounded-full border border-cyan-500/30 text-cyan-400 flex items-center gap-1.5 shrink-0`}>
           {STRATEGY_LABELS[topStrategy.key as keyof typeof STRATEGY_LABELS]}
           <span className={`font-bold ${scoreColor}`}>{topStrategy.score}</span>
         </span>
-        <button
-          onClick={() => onOpen(deal)}
-          className="text-xs text-slate-400 hover:text-white transition-colors font-medium"
-        >
-          View →
-        </button>
+        <div className="flex items-center gap-1.5">
+          {/* Seller status bubble */}
+          <span title={`Seller: ${deal.sellerStatus ?? 'pending'}`} className="flex items-center gap-1">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${deal.sellerStatus === 'approved' ? 'bg-emerald-400' : deal.sellerStatus === 'denied' ? 'bg-red-400' : 'bg-slate-600'}`} />
+            <span className="text-[10px] text-slate-500">S</span>
+          </span>
+          {/* Buyer status bubble */}
+          <span title={`Buyer: ${deal.buyerStatus ?? 'pending'}`} className="flex items-center gap-1">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${deal.buyerStatus === 'approved' ? 'bg-emerald-400' : deal.buyerStatus === 'denied' ? 'bg-red-400' : 'bg-slate-600'}`} />
+            <span className="text-[10px] text-slate-500">B</span>
+          </span>
+          <button
+            onClick={() => onOpen(deal)}
+            className="text-xs text-slate-400 hover:text-white transition-colors font-medium ml-1"
+          >
+            View →
+          </button>
+        </div>
       </div>
       </div>
     </div>

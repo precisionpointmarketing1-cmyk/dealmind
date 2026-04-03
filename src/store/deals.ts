@@ -31,6 +31,8 @@ export interface SavedDeal {
   savedAt: string
   nickname?: string
   result: AnalysisResult
+  sellerStatus?: 'pending' | 'approved' | 'denied'
+  buyerStatus?: 'pending' | 'approved' | 'denied'
 }
 
 interface DealsStore {
@@ -40,6 +42,7 @@ interface DealsStore {
   saveDeal: (result: AnalysisResult) => Promise<SavedDeal>
   deleteDeal: (id: string) => Promise<void>
   renameDeal: (id: string, nickname: string) => Promise<void>
+  updateDealStatus: (id: string, sellerStatus?: 'pending' | 'approved' | 'denied', buyerStatus?: 'pending' | 'approved' | 'denied') => Promise<void>
 }
 
 export const useDealsStore = create<DealsStore>()(
@@ -99,6 +102,26 @@ export const useDealsStore = create<DealsStore>()(
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ...deal, nickname }),
+            })
+          } catch { }
+        }
+      },
+
+      updateDealStatus: async (id, sellerStatus, buyerStatus) => {
+        set(s => ({
+          deals: s.deals.map(d => d.id === id ? {
+            ...d,
+            ...(sellerStatus !== undefined ? { sellerStatus } : {}),
+            ...(buyerStatus  !== undefined ? { buyerStatus  } : {}),
+          } : d),
+        }))
+        const deal = get().deals.find(d => d.id === id)
+        if (deal) {
+          try {
+            await fetch('/api/deals', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(deal),
             })
           } catch { }
         }

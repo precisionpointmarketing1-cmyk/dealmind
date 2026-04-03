@@ -20,3 +20,6 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Data files — persisted via Railway volume in production
+data/*.json

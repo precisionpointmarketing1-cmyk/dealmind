@@ -3,6 +3,7 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import React from 'react'
+import { randomUUID } from 'crypto'
 import { SellerReport } from '@/components/reports/SellerReport'
 import { CompanySettings, DEFAULT_COMPANY } from '@/types/company'
 import { AnalysisResult, SaleComp } from '@/types/deal'
@@ -28,7 +29,25 @@ export async function POST(req: NextRequest) {
     const addedRepairItems: { description: string; cost: number }[] | undefined = body.addedRepairItems?.length > 0 ? body.addedRepairItems : undefined
     const company = loadCompany()
 
-    const element = React.createElement(SellerReport, { result, company, selectedComps, selectedARV, ourOffer, sessionPhotos, addedRepairItems }) as any
+    // Generate a unique approval token and register it
+    const token = randomUUID()
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:8080'
+    const approvalUrl = `${appUrl}/seller-response/${token}`
+    const offerAmt = (ourOffer && ourOffer > 0) ? ourOffer : result.coreMetrics.mao
+
+    // Register the token (fire-and-forget — don't block PDF generation)
+    fetch(`${appUrl}/api/seller-response`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token,
+        address: `${result.input.address}, ${result.input.city}, ${result.input.state}`,
+        offerAmt,
+        dealSnapshot: { input: result.input, offerAmt },
+      }),
+    }).catch(() => {})
+
+    const element = React.createElement(SellerReport, { result, company, selectedComps, selectedARV, ourOffer, sessionPhotos, addedRepairItems, approvalUrl }) as any
     const buffer = await renderToBuffer(element)
     const uint8 = new Uint8Array(buffer)
 

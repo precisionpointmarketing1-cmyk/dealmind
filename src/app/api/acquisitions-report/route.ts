@@ -23,10 +23,11 @@ export async function POST(req: NextRequest) {
     const selectedComps: SaleComp[] | undefined = body.selectedComps?.length > 0 ? body.selectedComps : undefined
     const selectedARV: number | undefined = body.selectedARV ?? undefined
     const addedRepairItems: { description: string; cost: number }[] | undefined = body.addedRepairItems?.length > 0 ? body.addedRepairItems : undefined
+    const sessionPhotos: string[] | undefined = body.sessionPhotos?.length > 0 ? body.sessionPhotos : (result.propertyPhotos?.length ? result.propertyPhotos : undefined)
     if (body.activeRepairs > 0) result = patchRepairs(result, body.activeRepairs)
     const company = loadCompany()
 
-    const element = React.createElement(AcquisitionsReport, { result, company, selectedComps, selectedARV, addedRepairItems }) as any
+    const element = React.createElement(AcquisitionsReport, { result, company, selectedComps, selectedARV, addedRepairItems, sessionPhotos }) as any
     const buffer = await renderToBuffer(element)
     const uint8 = new Uint8Array(buffer)
 

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { AnalysisResult, ExitStrategy } from '@/types/deal'
+import { useDealsStore } from '@/store/deals'
 import { fmt } from '@/lib/utils/formatters'
 import { STRATEGY_LABELS } from '@/lib/utils/constants'
 import StrategyPanel from '@/components/strategies/StrategyPanel'
@@ -17,12 +18,14 @@ import RehabPanel from '@/components/dashboard/RehabPanel'
 interface Props {
   result: AnalysisResult
   sessionPhotos?: string[]
+  dealId?: string
+  initialSellerStatus?: 'pending' | 'approved' | 'denied'
   onReset: () => void
 }
 
 const SCORE_COLOR = (s: number) => s >= 70 ? 'text-emerald-400' : s >= 40 ? 'text-yellow-400' : 'text-red-400'
 
-export default function AnalysisDashboard({ result, sessionPhotos, onReset }: Props) {
+export default function AnalysisDashboard({ result, sessionPhotos, dealId, initialSellerStatus = 'pending', onReset }: Props) {
   const [generatingPDF, setGeneratingPDF] = useState(false)
   const [generatingSeller, setGeneratingSeller] = useState(false)
   const [generatingAcq, setGeneratingAcq] = useState(false)
@@ -32,6 +35,17 @@ export default function AnalysisDashboard({ result, sessionPhotos, onReset }: Pr
   const [editingOffer, setEditingOffer] = useState(false)
   const [activeRepairs, setActiveRepairs] = useState<number>(0)  // 0 = use input.estimatedRepairs
   const [addedRepairItems, setAddedRepairItems] = useState<{ id: string; description: string; cost: number }[]>([])
+  const [sellerStatus, setSellerStatus] = useState<'pending' | 'approved' | 'denied'>(initialSellerStatus)
+  const [askingPrice, setAskingPrice] = useState<number>(0)   // 0 = use MAO+spread default
+  const [editingAskingPrice, setEditingAskingPrice] = useState(false)
+  const { updateDealStatus } = useDealsStore()
+  const [emailModal, setEmailModal] = useState<{ type: 'seller' | 'investor' } | null>(null)
+  const [emailTo, setEmailTo] = useState('')
+  const [emailName, setEmailName] = useState('')
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailMessage, setEmailMessage] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailSent, setEmailSent] = useState<string | null>(null)
   const { input, coreMetrics, wholesale, subjectTo, airbnb, brrrr, arv, aiAnalysis, rentComps, saleComps } = result
 
   // Merge ATTOM sold comps into the primary comps array so they appear in the sold tab.
@@ -97,6 +111,47 @@ export default function AnalysisDashboard({ result, sessionPhotos, onReset }: Pr
       URL.revokeObjectURL(url)
     } finally {
       setGeneratingSeller(false)
+    }
+  }
+
+  async function sendEmail() {
+    if (!emailTo || !emailModal) return
+    setSendingEmail(true)
+    setEmailSent(null)
+    try {
+      const payload: Record<string, unknown> = {
+        reportType: emailModal.type,
+        toEmail: emailTo,
+        toName: emailName || undefined,
+        subject: emailSubject || undefined,
+        message: emailMessage || undefined,
+        result,
+        selectedComps,
+        selectedARV: selectedARV > 0 ? selectedARV : undefined,
+        addedRepairItems: addedRepairItems.length > 0 ? addedRepairItems : undefined,
+        activeRepairs: activeRepairs > 0 ? activeRepairs : undefined,
+      }
+      if (emailModal.type === 'seller') {
+        const effectiveOffer = ourOffer > 0 ? ourOffer : mao
+        payload.ourOffer = effectiveOffer
+        payload.offerAmt = effectiveOffer
+        payload.sessionPhotos = sessionPhotos?.length ? sessionPhotos : undefined
+      } else {
+        payload.photos = sessionPhotos ?? result.propertyPhotos ?? []
+      }
+      const res = await fetch('/api/email-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to send')
+      setEmailSent('sent')
+      setTimeout(() => { setEmailModal(null); setEmailSent(null); setEmailTo(''); setEmailName(''); setEmailSubject(''); setEmailMessage('') }, 2000)
+    } catch (err: any) {
+      setEmailSent(err.message)
+    } finally {
+      setSendingEmail(false)
     }
   }
 
@@ -423,12 +478,34 @@ export default function AnalysisDashboard({ result, sessionPhotos, onReset }: Pr
           ))}
         </div>
 
-        {aiAnalysis?.recommendedStrategy && (
-          <div className="mt-4 rounded-xl px-4 py-3 bg-cyan-500/10 border border-cyan-500/30">
-            <p className="text-xs text-cyan-400 font-semibold mb-1">AI Recommended Structure</p>
-            <p className="text-sm text-white font-bold">{STRATEGY_LABELS[aiAnalysis.recommendedStrategy]}</p>
-          </div>
-        )}
+        {aiAnalysis?.recommendedStrategy && (() => {
+          const ENTRY_EXIT_LABELS: Record<string, { entry: string; exit: string }> = {
+            'cash-offer':    { entry: 'Cash Offer',  exit: 'Assign / Wholesale' },
+            'wholesale':     { entry: 'Cash Offer',  exit: 'Assign / Wholesale' },
+            'brrrr':         { entry: 'Cash Offer',  exit: 'Fix & Flip / BRRRR' },
+            'subject-to':    { entry: 'Subject-To',  exit: 'Buy & Hold / LTR' },
+            'buy-hold':      { entry: 'Subject-To',  exit: 'Buy & Hold / LTR' },
+            'airbnb':        { entry: 'Cash Offer',  exit: 'DSCR Loan / Buy & Hold' },
+            'listing':       { entry: 'Listing',     exit: 'Traditional MLS Sale' },
+            'owner-finance': { entry: 'Owner Finance', exit: 'Buy & Hold / LTR' },
+            'private-money': { entry: 'Private Money', exit: 'Fix & Flip / BRRRR' },
+          }
+          const label = ENTRY_EXIT_LABELS[aiAnalysis.recommendedStrategy]
+          return (
+            <div className="mt-4 rounded-xl px-4 py-3 bg-cyan-500/10 border border-cyan-500/30">
+              <p className="text-xs text-cyan-400 font-semibold mb-1">AI Recommended Structure</p>
+              {label ? (
+                <p className="text-sm text-white font-bold">
+                  <span className="text-slate-400 font-normal">{label.entry}</span>
+                  <span className="text-slate-500 mx-1.5">→</span>
+                  {label.exit}
+                </p>
+              ) : (
+                <p className="text-sm text-white font-bold">{STRATEGY_LABELS[aiAnalysis.recommendedStrategy]}</p>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* ── Neighborhood Intelligence (ATTOM) ── */}
@@ -441,83 +518,140 @@ export default function AnalysisDashboard({ result, sessionPhotos, onReset }: Pr
         <MarketGradeCard grade={aiAnalysis.marketGrade} />
       )}
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <button onClick={onReset} className="btn-secondary">← Analyze Another Deal</button>
-        <button
-          onClick={downloadAcquisitionsReport}
-          disabled={generatingAcq}
-          className="btn-secondary flex items-center gap-2"
-        >
-          {generatingAcq ? (
-            <>
-              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-              Generating...
-            </>
-          ) : <>📋 Acquisitions Report</>}
+      <div className="flex items-center gap-2 flex-nowrap overflow-x-auto pb-1">
+        <button onClick={onReset} className="btn-secondary shrink-0">← New Deal</button>
+
+        <div className="w-px h-6 bg-slate-700 shrink-0" />
+
+        <button onClick={downloadAcquisitionsReport} disabled={generatingAcq} className="btn-secondary flex items-center gap-1.5 shrink-0">
+          {generatingAcq ? <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg> : <>📋</>} Acq
         </button>
-        {/* Seller offer editor + report button */}
-        <div className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2">
-          <span className="text-xs text-slate-400 shrink-0">Our Offer:</span>
-          {editingOffer ? (
-            <input
-              type="number"
-              autoFocus
-              defaultValue={ourOffer > 0 ? ourOffer : mao}
-              onBlur={e => { setOurOffer(Number(e.target.value) || 0); setEditingOffer(false) }}
-              onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') { setOurOffer(Number((e.target as HTMLInputElement).value) || 0); setEditingOffer(false) } }}
-              className="w-28 bg-slate-700 text-white text-sm font-bold rounded-lg px-2 py-1 border border-cyan-500 outline-none"
-            />
-          ) : (
-            <button type="button" onClick={() => setEditingOffer(true)}
-              className="text-sm font-bold text-white hover:text-cyan-400 transition-colors min-w-[80px] text-left">
-              {fmt.currency(ourOffer > 0 ? ourOffer : mao)}
-            </button>
-          )}
-          {ourOffer > 0 && ourOffer < mao && (
-            <span className="text-xs text-emerald-400 font-semibold shrink-0">+{fmt.currency(mao - ourOffer)} spread</span>
-          )}
-          {ourOffer > 0 && ourOffer > mao && (
-            <span className="text-xs text-red-400 font-semibold shrink-0">{fmt.currency(ourOffer - mao)} over MAO</span>
-          )}
-          <button type="button" onClick={() => setEditingOffer(true)}
-            className="text-xs text-slate-500 hover:text-slate-300 transition-colors shrink-0">✎</button>
-          <button
-            onClick={downloadSellerReport}
-            disabled={generatingSeller}
-            className="btn-secondary flex items-center gap-2 ml-1 shrink-0"
-          >
-            {generatingSeller ? (
-              <>
-                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                </svg>
-                Generating...
-              </>
-            ) : <>🏠 Seller Report</>}
+
+        <div className="w-px h-6 bg-slate-700 shrink-0" />
+
+        {/* ── Seller group ── */}
+        <span className="text-xs text-slate-500 shrink-0">Seller</span>
+        <span className="text-xs text-slate-400 shrink-0">Offer:</span>
+        {editingOffer ? (
+          <input type="number" autoFocus defaultValue={ourOffer > 0 ? ourOffer : mao}
+            onBlur={e => { setOurOffer(Number(e.target.value) || 0); setEditingOffer(false) }}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') { setOurOffer(Number((e.target as HTMLInputElement).value) || 0); setEditingOffer(false) } }}
+            className="w-24 bg-slate-700 text-white text-sm font-bold rounded-lg px-2 py-1 border border-cyan-500 outline-none shrink-0" />
+        ) : (
+          <button type="button" onClick={() => setEditingOffer(true)} className="text-sm font-bold text-white hover:text-cyan-400 transition-colors shrink-0">
+            {fmt.currency(ourOffer > 0 ? ourOffer : mao)} <span className="text-slate-500 text-xs">✎</span>
           </button>
-        </div>
-        <button
-          onClick={downloadReport}
-          disabled={generatingPDF}
-          className="btn-primary flex items-center gap-2"
-        >
-          {generatingPDF ? (
-            <>
-              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-              Generating Report...
-            </>
-          ) : (
-            <>📄 Download Investor Report</>
-          )}
+        )}
+        <button onClick={downloadSellerReport} disabled={generatingSeller} className="btn-secondary flex items-center gap-1 shrink-0">
+          {generatingSeller ? <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg> : null} Cash Offer
+        </button>
+        <button onClick={() => { setEmailModal({ type: 'seller' }); setEmailSubject(`Cash Offer — ${input.address}, ${input.city}, ${input.state}`) }}
+          title="Email Cash Offer to Seller" className="btn-secondary px-2.5 shrink-0">✉</button>
+
+        {sellerStatus !== 'pending' && (
+          <span className={`text-xs font-semibold shrink-0 ${sellerStatus === 'approved' ? 'text-emerald-400' : 'text-red-400'}`}>
+            {sellerStatus === 'approved' ? 'Accepted' : 'Declined'}
+          </span>
+        )}
+
+        <div className="w-px h-6 bg-slate-700 shrink-0" />
+
+        {/* ── Buyer group ── */}
+        <span className="text-xs text-slate-500 shrink-0">Buyer</span>
+        <span className="text-xs text-slate-400 shrink-0">Asking:</span>
+        {editingAskingPrice ? (
+          <input type="number" autoFocus defaultValue={askingPrice > 0 ? askingPrice : Math.round(mao * 1.1)}
+            onBlur={e => { setAskingPrice(Number(e.target.value) || 0); setEditingAskingPrice(false) }}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') { setAskingPrice(Number((e.target as HTMLInputElement).value) || 0); setEditingAskingPrice(false) } }}
+            className="w-24 bg-slate-700 text-white text-sm font-bold rounded-lg px-2 py-1 border border-cyan-500 outline-none shrink-0" />
+        ) : (
+          <button type="button" onClick={() => setEditingAskingPrice(true)} className="text-sm font-bold text-white hover:text-cyan-400 transition-colors shrink-0">
+            {fmt.currency(askingPrice > 0 ? askingPrice : Math.round(mao * 1.1))} <span className="text-slate-500 text-xs">✎</span>
+          </button>
+        )}
+        <button onClick={downloadReport} disabled={generatingPDF} className="btn-primary flex items-center gap-1 shrink-0">
+          {generatingPDF ? <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg> : null} Buyer Report
         </button>
       </div>
+
+      {/* ── Email Modal ── */}
+      {emailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl" style={{ maxWidth: '440px' }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-white">
+                {emailModal.type === 'seller' ? '✉ Email Cash Offer to Seller' : '✉ Email Deal Report to Buyer'}
+              </h3>
+              <button onClick={() => { setEmailModal(null); setEmailSent(null) }} className="text-slate-500 hover:text-white text-xl leading-none">×</button>
+            </div>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Recipient Email *</label>
+                <input
+                  type="email"
+                  placeholder="seller@example.com"
+                  value={emailTo}
+                  onChange={e => setEmailTo(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-cyan-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Recipient Name</label>
+                <input
+                  type="text"
+                  placeholder="John Smith"
+                  value={emailName}
+                  onChange={e => setEmailName(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-cyan-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Subject</label>
+                <input
+                  type="text"
+                  value={emailSubject}
+                  onChange={e => setEmailSubject(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-cyan-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Message (optional)</label>
+                <textarea
+                  rows={3}
+                  placeholder="Add a personal note..."
+                  value={emailMessage}
+                  onChange={e => setEmailMessage(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-cyan-500 resize-none"
+                />
+              </div>
+              {emailSent && emailSent !== 'sent' && (
+                <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{emailSent}</p>
+              )}
+              {emailSent === 'sent' && (
+                <p className="text-xs text-emerald-400 bg-emerald-500/10 rounded-lg px-3 py-2">✓ Email sent successfully!</p>
+              )}
+              <div className="flex gap-2 mt-1">
+                <button
+                  onClick={sendEmail}
+                  disabled={sendingEmail || !emailTo}
+                  className="btn-primary flex-1 flex items-center justify-center gap-2"
+                >
+                  {sendingEmail ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                      Sending...
+                    </>
+                  ) : <>Send Report</>}
+                </button>
+                <button onClick={() => { setEmailModal(null); setEmailSent(null) }} className="btn-secondary">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

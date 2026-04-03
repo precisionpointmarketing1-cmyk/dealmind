@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 
 export default function LoginPage() {
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -18,14 +19,15 @@ export default function LoginPage() {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ email, password }),
     })
 
     if (res.ok) {
       router.push('/')
       router.refresh()
     } else {
-      setError('Invalid password')
+      const data = await res.json()
+      setError(data.error ?? 'Invalid email or password')
       setLoading(false)
     }
   }
@@ -44,14 +46,26 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
+              <label className="label">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="input"
+                placeholder="you@example.com"
+                autoFocus
+                autoComplete="email"
+              />
+            </div>
+            <div>
               <label className="label">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 className="input"
-                placeholder="Enter team password"
-                autoFocus
+                placeholder="Enter your password"
+                autoComplete="current-password"
               />
             </div>
 
@@ -61,7 +75,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading || !password}
+              disabled={loading || !email || !password}
               className="btn-primary w-full py-3"
             >
               {loading ? 'Signing in...' : 'Sign In'}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { getSession } from '@/lib/auth'
 
 const DATA_FILE = path.join(process.cwd(), 'data', 'deals.json')
 
@@ -20,26 +21,48 @@ function writeDeals(deals: any[]) {
 }
 
 export async function GET() {
-  return NextResponse.json(readDeals())
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const all = readDeals()
+  // Admins see all deals; members see only their own
+  const deals = session.isAdmin ? all : all.filter((d: any) => d.userId === session.userId)
+  return NextResponse.json(deals)
 }
 
 export async function POST(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const deal = await req.json()
   const deals = readDeals()
-  // Update if exists, otherwise prepend
+
   const idx = deals.findIndex((d: any) => d.id === deal.id)
   if (idx >= 0) {
-    deals[idx] = deal
+    // Only owner or admin can update
+    if (deals[idx].userId && deals[idx].userId !== session.userId && !session.isAdmin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    deals[idx] = { ...deal, userId: deals[idx].userId ?? session.userId }
   } else {
-    deals.unshift(deal)
+    deals.unshift({ ...deal, userId: session.userId })
   }
+
   writeDeals(deals)
   return NextResponse.json(deal)
 }
 
 export async function DELETE(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { id } = await req.json()
-  const deals = readDeals().filter((d: any) => d.id !== id)
-  writeDeals(deals)
+  const deals = readDeals()
+  const deal = deals.find((d: any) => d.id === id)
+
+  if (deal && deal.userId && deal.userId !== session.userId && !session.isAdmin) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  writeDeals(deals.filter((d: any) => d.id !== id))
   return NextResponse.json({ ok: true })
 }

@@ -175,8 +175,19 @@ export function InvestorReport({ result, company, photos = [], mapImageUrl, sele
           </View>
         </View>
 
+        {/* House photo */}
+        {allPhotos.length > 0 && (
+          <View style={{ marginBottom: 0, borderTopLeftRadius: 4, borderTopRightRadius: 4, overflow: 'hidden' }} wrap={false}>
+            <Image src={allPhotos[0]} style={{ width: '100%', height: 170, objectFit: 'cover' }} />
+          </View>
+        )}
+
         {/* Address bar */}
-        <View style={s.addrBar}>
+        <View style={{
+          ...s.addrBar,
+          borderBottomLeftRadius: 4, borderBottomRightRadius: 4,
+          ...(allPhotos.length > 0 ? { borderTopLeftRadius: 0, borderTopRightRadius: 0 } : {}),
+        }}>
           <Text style={s.addrText}>{input.address}, {input.city}, {input.state} {input.zip}</Text>
           <Text style={s.addrSub}>
             {input.propertyType.replace(/-/g, ' ')} · {input.bedrooms} bed / {input.bathrooms} bath · {(input.sqft ?? 0).toLocaleString()} sqft · Built {input.yearBuilt}
@@ -226,37 +237,6 @@ export function InvestorReport({ result, company, photos = [], mapImageUrl, sele
           </View>
         )}
 
-        {/* Property Photo Walkthrough */}
-        {allPhotos.length > 0 && (() => {
-          const labels  = rehabScan?.photoLabels ?? []
-          const order   = rehabScan?.photoOrder ?? allPhotos.map((_, i) => i)
-          // Build ordered list, then split into rows of 3
-          const ordered = order.map(idx => ({ src: allPhotos[idx], label: labels[idx] ?? '' }))
-          const rows: typeof ordered[] = []
-          for (let i = 0; i < ordered.length; i += 3) rows.push(ordered.slice(i, i + 3))
-          return (
-            <View style={s.section}>
-              <Text style={s.sectionHead}>Property Walkthrough · {allPhotos.length} Photos</Text>
-              {rows.map((row, ri) => (
-                <View key={ri} style={{ flexDirection: 'row', gap: 5, marginBottom: 5 }} wrap={false}>
-                  {row.map((item, ci) => (
-                    <View key={ci} style={{ flex: 1 }}>
-                      <Image src={item.src} style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 3, borderWidth: 1, borderColor: C.border }} />
-                      {item.label ? (
-                        <Text style={{ fontSize: 7, color: C.textMid, marginTop: 2, textAlign: 'center' }}>{item.label}</Text>
-                      ) : null}
-                    </View>
-                  ))}
-                  {/* Pad last row if fewer than 3 */}
-                  {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, pi) => (
-                    <View key={`pad-${pi}`} style={{ flex: 1 }} />
-                  ))}
-                </View>
-              ))}
-            </View>
-          )
-        })()}
-
         {/* Footer */}
         <View style={s.footer} fixed>
           <Text style={s.footerTx}>{company.name} · {company.phone} · {company.email}</Text>
@@ -265,7 +245,58 @@ export function InvestorReport({ result, company, photos = [], mapImageUrl, sele
       </Page>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          PAGE 2 — Comps & Map
+          PAGE 2 — Property Photo Walkthrough (only if photos exist)
+      ═══════════════════════════════════════════════════════════════════ */}
+      {allPhotos.length > 0 && (() => {
+        const labels  = rehabScan?.photoLabels ?? []
+        const order   = rehabScan?.photoOrder ?? allPhotos.map((_, i) => i)
+        const ordered = order.map(idx => ({ src: allPhotos[idx], label: labels[idx] ?? '' }))
+        const rows: typeof ordered[] = []
+        for (let i = 0; i < ordered.length; i += 3) rows.push(ordered.slice(i, i + 3))
+        return (
+          <Page size="LETTER" style={s.page}>
+            {/* Header */}
+            <View style={s.header}>
+              <View>
+                {company.logoBase64
+                  ? <Image src={company.logoBase64} style={s.logo} />
+                  : <Text style={{ fontSize: 16, fontFamily: 'Helvetica-Bold', color: C.cyan }}>{company.name}</Text>}
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 14, fontFamily: 'Helvetica-Bold', color: C.navyMid }}>PROPERTY WALKTHROUGH</Text>
+                <Text style={{ fontSize: 8, color: C.textMid, marginTop: 2 }}>{input.address}, {input.city}, {input.state} {input.zip}</Text>
+              </View>
+            </View>
+
+            <View style={s.section}>
+              <Text style={s.sectionHead}>Property Walkthrough · {allPhotos.length} Photos</Text>
+              {rows.map((row, ri) => (
+                <View key={ri} style={{ flexDirection: 'row', gap: 5, marginBottom: 5 }} wrap={false}>
+                  {row.map((item, ci) => (
+                    <View key={ci} style={{ flex: 1 }}>
+                      <Image src={item.src} style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 3, borderWidth: 1, borderColor: C.border }} />
+                      {item.label ? (
+                        <Text style={{ fontSize: 7, color: C.textMid, marginTop: 2, textAlign: 'center' }}>{item.label}</Text>
+                      ) : null}
+                    </View>
+                  ))}
+                  {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, pi) => (
+                    <View key={`pad-${pi}`} style={{ flex: 1 }} />
+                  ))}
+                </View>
+              ))}
+            </View>
+
+            <View style={s.footer} fixed>
+              <Text style={s.footerTx}>{company.name} · {company.phone} · {company.email}</Text>
+              <Text style={s.footerTx} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
+            </View>
+          </Page>
+        )
+      })()}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          PAGE 3 — Comps & Map
       ═══════════════════════════════════════════════════════════════════ */}
       <Page size="LETTER" style={s.page}>
 

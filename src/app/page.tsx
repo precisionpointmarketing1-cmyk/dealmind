@@ -14,6 +14,7 @@ type View = 'home' | 'intake' | 'result'
 export default function Home() {
   const [view, setView] = useState<View>('home')
   const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [activeDealId, setActiveDealId] = useState<string | null>(null)
   const [pendingRehabScan, setPendingRehabScan] = useState<RehabScan | null>(null)
   const [sessionPhotos, setSessionPhotos] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
@@ -64,6 +65,7 @@ export default function Home() {
 
   function openSavedDeal(deal: SavedDeal) {
     setResult(deal.result)
+    setActiveDealId(deal.id)
     if (deal.result.propertyPhotos?.length) setSessionPhotos(deal.result.propertyPhotos)
     setView('result')
   }
@@ -171,7 +173,13 @@ export default function Home() {
 
         {/* ── Result: full analysis ── */}
         {view === 'result' && result && (
-          <AnalysisDashboard result={result} sessionPhotos={sessionPhotos} onReset={() => setView('home')} />
+          <AnalysisDashboard
+            result={result}
+            sessionPhotos={sessionPhotos}
+            dealId={activeDealId ?? undefined}
+            initialSellerStatus={activeDealId ? (deals.find(d => d.id === activeDealId)?.sellerStatus ?? 'pending') : 'pending'}
+            onReset={() => { setView('home'); setActiveDealId(null) }}
+          />
         )}
 
       </div>

@@ -9,6 +9,7 @@ interface Props {
   selectedComps?: SaleComp[]
   selectedARV?: number
   addedRepairItems?: { description: string; cost: number }[]
+  sessionPhotos?: string[]
 }
 
 // Page-level padding handles header/footer clearance on every page
@@ -31,7 +32,7 @@ function fmtDate(raw: string | undefined | null): string {
 }
 function scoreLabel(n: number) { return n >= 70 ? 'Strong' : n >= 55 ? 'Good' : n >= 40 ? 'Fair' : 'Weak' }
 
-export function AcquisitionsReport({ result, company, selectedComps, selectedARV, addedRepairItems }: Props) {
+export function AcquisitionsReport({ result, company, selectedComps, selectedARV, addedRepairItems, sessionPhotos }: Props) {
   const primary = company.primaryColor || '#00c8ff'
   const accent  = company.accentColor  || '#0066cc'
 
@@ -178,8 +179,20 @@ export function AcquisitionsReport({ result, company, selectedComps, selectedARV
           </View>
         </View>
 
+        {/* House photo */}
+        {sessionPhotos && sessionPhotos.length > 0 && (
+          <View style={{ marginBottom: 0, borderTopLeftRadius: 4, borderTopRightRadius: 4, overflow: 'hidden' }} wrap={false}>
+            <Image src={sessionPhotos[0]} style={{ width: '100%', height: 170, objectFit: 'cover' }} />
+          </View>
+        )}
+
         {/* Property address bar */}
-        <View style={{ backgroundColor: C.navyMid, borderRadius: 4, padding: 10, marginBottom: 14 }}>
+        <View style={{
+          backgroundColor: C.navyMid,
+          borderBottomLeftRadius: 4, borderBottomRightRadius: 4,
+          ...(sessionPhotos?.length ? {} : { borderTopLeftRadius: 4, borderTopRightRadius: 4 }),
+          padding: 10, marginBottom: 14,
+        }}>
           <Text style={{ fontSize: 13, fontFamily: 'Helvetica-Bold', color: C.white }}>{input.address}, {input.city}, {input.state} {input.zip}</Text>
           <Text style={{ fontSize: 8, color: C.slate, marginTop: 2 }}>
             {input.propertyType.replace(/-/g, ' ')} · {input.bedrooms}bd/{input.bathrooms}ba · {(input.sqft ?? 0).toLocaleString()} sqft · Built {input.yearBuilt}

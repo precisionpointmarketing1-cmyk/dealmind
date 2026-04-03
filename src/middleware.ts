@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/api/auth']
+const PUBLIC_PATHS = ['/login', '/api/auth', '/seller-response', '/api/seller-response']
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -20,9 +20,9 @@ export function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Check session cookie — real HMAC verification happens server-side
+  // Check session cookie — real HMAC + user verification happens server-side in each route
   const session = req.cookies.get('dm_session')?.value
-  if (!session || session.length < 60) {
+  if (!session) {
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
