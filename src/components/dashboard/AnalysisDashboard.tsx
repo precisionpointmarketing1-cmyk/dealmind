@@ -31,7 +31,7 @@ export default function AnalysisDashboard({ result, sessionPhotos, onReset }: Pr
   const [ourOffer, setOurOffer] = useState<number>(0)       // 0 = use MAO
   const [editingOffer, setEditingOffer] = useState(false)
   const [activeRepairs, setActiveRepairs] = useState<number>(0)  // 0 = use input.estimatedRepairs
-  const [addedRepairItems, setAddedRepairItems] = useState<{ description: string; cost: number }[]>([])
+  const [addedRepairItems, setAddedRepairItems] = useState<{ id: string; description: string; cost: number }[]>([])
   const { input, coreMetrics, wholesale, subjectTo, airbnb, brrrr, arv, aiAnalysis, rentComps, saleComps } = result
 
   // Merge ATTOM sold comps into the primary comps array so they appear in the sold tab.
