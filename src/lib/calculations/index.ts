@@ -170,9 +170,9 @@ export async function analyzeProperty(input: DealInput): Promise<AnalysisResult>
     annualAppreciation:        input.annualAppreciation ?? DEFAULTS.ANNUAL_APPRECIATION,
     marketCapRate:             input.marketCapRate      ?? DEFAULTS.MARKET_CAP_RATE,
     // Only override with BatchLeads data if user hasn't provided manually
-    existingLoanBalance:       input.existingLoanBalance > 0  ? input.existingLoanBalance  : blLoanBalance,
-    existingMonthlyPITI:       input.existingMonthlyPITI  > 0 ? input.existingMonthlyPITI  : blPayment,
-    existingInterestRate:      input.existingInterestRate > 0  ? input.existingInterestRate  : blRate,
+    existingLoanBalance:       (input.existingLoanBalance ?? 0) > 0  ? input.existingLoanBalance  : blLoanBalance,
+    existingMonthlyPITI:       (input.existingMonthlyPITI  ?? 0) > 0 ? input.existingMonthlyPITI  : blPayment,
+    existingInterestRate:      (input.existingInterestRate ?? 0) > 0  ? input.existingInterestRate  : blRate,
   }
 
   // 4. Run all strategy calculations in parallel
