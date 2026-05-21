@@ -100,8 +100,15 @@ export function ensureAdminUser() {
   if (users.length > 0) return  // already initialized
 
   const email = process.env.ADMIN_EMAIL ?? 'admin@dealmind.ai'
-  const password = process.env.ADMIN_PASSWORD ?? 'Housebuyer7!'
+  const password = process.env.ADMIN_PASSWORD
   const name = process.env.ADMIN_NAME ?? 'Admin'
+
+  if (!password) {
+    throw new Error(
+      'Cannot bootstrap admin user: ADMIN_PASSWORD environment variable is required. ' +
+      'A hardcoded default would let anyone log in as admin.'
+    )
+  }
 
   const admin: User = {
     id: 'user_admin',
