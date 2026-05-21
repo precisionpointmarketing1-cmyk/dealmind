@@ -144,13 +144,20 @@ export async function getSaleComps(
   const fullAddress = `${address}, ${city}, ${state} ${zip}`
   const beds = String(Math.max(1, bedrooms || 3))
 
+  // RentCast doesn't filter comps by sqft server-side, so without a client-side
+  // band a 1750-sqft subject pulls in 1200 and 2500 sqft homes from the area,
+  // inflating compBasedARV and compMedianARV. ±25% keeps the comp set on-mix.
+  const withinSqftBand = sqft > 0
+    ? (s: number) => s > 0 && s >= sqft * 0.75 && s <= sqft * 1.25
+    : (_: number) => true
+
   // Fetch sold comps from AVM + the Sold/Inactive listings endpoint (two sources)
   // Also fetch active/pending for market context — clearly labelled in UI, excluded from ARV math
   const [soldAVMResult, soldListingsResult, activeResult, pendingResult] = await Promise.allSettled([
     get(`/avm/value?${new URLSearchParams({ address: fullAddress, bedrooms: beds, compCount: '50', radius: '3' })}`),
-    get(`/listings?${new URLSearchParams({ zipCode: zip, status: 'Inactive', bedrooms: beds, limit: '30', radius: '3' })}`),
-    get(`/listings?${new URLSearchParams({ zipCode: zip, status: 'Active',   bedrooms: beds, limit: '10', radius: '3' })}`),
-    get(`/listings?${new URLSearchParams({ zipCode: zip, status: 'Pending',  bedrooms: beds, limit: '10', radius: '3' })}`),
+    get(`/listings/sale?${new URLSearchParams({ zipCode: zip, status: 'Inactive', bedrooms: beds, limit: '50' })}`),
+    get(`/listings/sale?${new URLSearchParams({ zipCode: zip, status: 'Active',   bedrooms: beds, limit: '20' })}`),
+    get(`/listings/sale?${new URLSearchParams({ zipCode: zip, status: 'Pending',  bedrooms: beds, limit: '20' })}`),
   ])
 
   const soldAVMData     = soldAVMResult.status     === 'fulfilled' ? soldAVMResult.value     : { comparables: [], price: 0, priceRangeLow: 0, priceRangeHigh: 0 }
@@ -166,7 +173,7 @@ export async function getSaleComps(
   }
 
   const avmComps = (soldAVMData.comparables ?? [])
-    .filter((c: any) => (c.price ?? 0) > 0 && (c.squareFootage ?? 0) > 0)
+    .filter((c: any) => (c.price ?? 0) > 0 && (c.squareFootage ?? 0) > 0 && withinSqftBand(c.squareFootage))
     .map((c: any) => {
       const mappedStatus = mapAvmStatus(c.status ?? '')
       return {
@@ -195,7 +202,7 @@ export async function getSaleComps(
   // Inactive/sold listings — actual closed transactions from listing history
   const soldListingsArr = Array.isArray(soldListingsRaw) ? soldListingsRaw : soldListingsRaw?.listings ?? []
   const inactiveComps = soldListingsArr
-    .filter((c: any) => (c.price ?? c.lastSalePrice ?? 0) > 0 && (c.squareFootage ?? 0) > 0)
+    .filter((c: any) => (c.price ?? c.lastSalePrice ?? 0) > 0 && (c.squareFootage ?? 0) > 0 && withinSqftBand(c.squareFootage))
     .map((c: any) => {
       const price = c.lastSalePrice ?? c.price ?? 0
       const sf    = c.squareFootage ?? 0
@@ -264,7 +271,7 @@ export async function getSaleComps(
   const activeListings = [
     ...avmActiveComps,
     ...(Array.isArray(activeData) ? activeData : activeData.listings ?? [])
-      .filter((c: any) => (c.price ?? c.listPrice ?? 0) > 0)
+      .filter((c: any) => (c.price ?? c.listPrice ?? 0) > 0 && withinSqftBand(c.squareFootage ?? 0))
       .map((c: any) => mapListing(c, 'active')),
   ].filter(c => {
     const key = c.address.toLowerCase().trim()
@@ -273,7 +280,7 @@ export async function getSaleComps(
   })
 
   const pendingListings = (Array.isArray(pendingData) ? pendingData : pendingData.listings ?? [])
-    .filter((c: any) => (c.price ?? c.listPrice ?? 0) > 0)
+    .filter((c: any) => (c.price ?? c.listPrice ?? 0) > 0 && withinSqftBand(c.squareFootage ?? 0))
     .map((c: any) => mapListing(c, 'pending'))
   pendingListings.push(...avmPendingComps)
 
