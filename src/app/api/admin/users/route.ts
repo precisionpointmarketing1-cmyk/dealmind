@@ -18,7 +18,7 @@ async function sendWelcomeEmail(name: string, email: string, password: string) {
     await resend.emails.send({
       from,
       to: email,
-      subject: 'You've been added to DealMind AI',
+      subject: "You've been added to DealMind AI",
       html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0b0f1e;color:#e2e8f0;border-radius:12px;">
           <h1 style="font-size:22px;font-weight:700;color:#ffffff;margin-bottom:4px;">Welcome to DealMind AI</h1>
